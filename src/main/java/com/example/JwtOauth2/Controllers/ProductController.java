@@ -14,15 +14,15 @@ import java.util.List;
 public class ProductController {
 
     @Autowired
-    private static IProducts _iproducts;
+    private IProducts _iproducts;
 
     @GetMapping("/products")
     public List<Products> getAllP(){
-        List<Products> listP = new ArrayList<>();
+      //  List<Products> listP = new ArrayList<>();
         try {
             return _iproducts.findAll();
         }catch (Exception ex){
-            return listP;
+            throw new RuntimeException(ex.getMessage());
         }
     }
 

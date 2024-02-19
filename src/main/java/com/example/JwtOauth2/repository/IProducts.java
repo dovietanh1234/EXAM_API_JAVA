@@ -9,3 +9,8 @@ import java.util.List;
 @Repository
 public interface IProducts extends JpaRepository<Products, Integer> {
 }
+
+
+/*
+* @Autowired là tự dong tao doi tuong.
+* */
