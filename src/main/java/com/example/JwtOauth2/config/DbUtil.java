@@ -1,4 +1,4 @@
-package com.example.JwtOauth2.Config;
+package com.example.JwtOauth2.config;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
