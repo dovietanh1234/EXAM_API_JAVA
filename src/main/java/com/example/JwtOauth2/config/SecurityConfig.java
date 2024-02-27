@@ -7,7 +7,16 @@ sau khi tao xong Bean
 
 
 import com.example.JwtOauth2.config.userConfig.UserInfoManagerConfig;
+import com.nimbusds.jose.jwk.JWK;
+import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
+import com.nimbusds.jose.jwk.source.JWKSource;
+import com.nimbusds.jose.proc.SecurityContext;
+import com.nimbusds.jwt.JWT;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -16,8 +25,15 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
+import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
@@ -25,30 +41,62 @@ import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 @EnableWebSecurity
 @EnableMethodSecurity
 @RequiredArgsConstructor
+@Slf4j
 public class SecurityConfig {
 
+    //Signin --> username, password ... -> accessToken( PERMISSION ) JWT TOKEN
     private final UserInfoManagerConfig userInfoManagerConfig;
 
-    @Order(1)
+    // tao 2 bien cho cau hinh jwt "jwtEncoder"
+    private final RSAKeyRecord rsaKeyRecord;
+
+    // CONFIG MIDDLEWARE JWT
+    @Order(1) // dat thu tu uu tien cho SecurityFilterChain
+    @Bean  // tao 1 instance cho phep cac class khac inject ...
+    public SecurityFilterChain signInSecurityFilterChain(HttpSecurity httpSecurity) throws Exception {
+        return httpSecurity
+                .securityMatcher(new AntPathRequestMatcher("/sign-in/**")) // chuoi bo loc nay chi ap dung cho cac duong dan HTTP la "/sign-in/"
+                .csrf(AbstractHttpConfigurer::disable) // vo hieu hoa tan cong CSRF
+                .authorizeHttpRequests(auth -> auth.anyRequest().authenticated()) // yeu cau all HTTP phai duoc XAC THUC
+                .userDetailsService(userInfoManagerConfig) // dat dich vu de tim kiem thong tin nguoi dung THONG QUA qua trinh xac thuc
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // cau hinh chinh sach tao session. KO su dung session de save trang thai nguoi dung.
+                .exceptionHandling(ex -> {
+                    ex.authenticationEntryPoint((request, response, authenticationException) ->
+                            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, authenticationException.getMessage()));
+                }) // neu loi xac thuc se thong bao loi guu ve cho client
+                .httpBasic(Customizer.withDefaults()) // kich hoat xac thuc co ban voi cac cai dat mac dinh
+                .build(); // tao ra mot SecurityFilterChain tu cau hinh da cho.
+    }
+
+    // CONFIG Security Authentication
+    @Order(2)
     @Bean
     public SecurityFilterChain apiSecurityFilterChain(HttpSecurity httpSecurity) throws Exception {
         return httpSecurity
                 .securityMatcher(new AntPathRequestMatcher("/api/**"))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
-                .userDetailsService(userInfoManagerConfig)
+              //  .userDetailsService(userInfoManagerConfig) //thay doi: duyet qua token chu ko can account nua
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults())) // duyet token thi moi co the chay API
+                .sessionManagement(session -> session.sessionCreationPolicy( SessionCreationPolicy.STATELESS ))
+                .exceptionHandling(ex -> {
+                     log.error("[SecurityConfig:apiSecurityFilterChain] Exception due to :{}", ex);
+                     ex.authenticationEntryPoint(new BearerTokenAuthenticationEntryPoint());
+                     ex.accessDeniedHandler(new BearerTokenAccessDeniedHandler());
+                })
                 .httpBasic(Customizer.withDefaults())
                 .build();
     }
 
-    @Order(2)
+    // CONFIG Security authentication
+    @Order(3)
     @Bean
     public SecurityFilterChain h2ConsoleSecurityFilterChainConfig(HttpSecurity httpSecurity) throws Exception {
         return httpSecurity
-                .securityMatcher(new AntPathRequestMatcher(("/h2-console/**")))
-                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
-                .csrf(csrf -> csrf.ignoringRequestMatchers(AntPathRequestMatcher.antMatcher("/h2-console/*")))
-                .headers( headers -> headers.frameOptions(Customizer.withDefaults()).disable())
+                .securityMatcher(new AntPathRequestMatcher(("/h2-console/**"))) // bo loc nay chi ap dung cac yeu cau HTTP den cac duong dan bat dau bang "/h2-console/"
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll()) // ap dung cho all yeu cau HTTP ko yeu cau xac thuc.
+                .csrf(csrf -> csrf.ignoringRequestMatchers(AntPathRequestMatcher.antMatcher("/h2-console/*"))) // vo hieu hoa tan cong CSRF cho cac yeu cau den "/h2-console"
+                .headers( headers -> headers.frameOptions(Customizer.withDefaults()).disable()) //vo hieu hoa tieu de X-Frame-Options  -> h2 console hoat dong trong 1 iframe mot so Browser se chan cac yeu cau iframe neu tieu de X-Frame-Options duoc dat.
                 .build();
     }
 
@@ -56,6 +104,34 @@ public class SecurityConfig {
 PasswordEncoder passwordEncoder(){
         return new BCryptPasswordEncoder();
 }
+
+
+
+    // su dung khoa cong khai tu RSA tu rsaKeyRecord
+@Bean
+JwtDecoder jwtDecoder(){ // giai ma va xac minh JWT
+    return NimbusJwtDecoder.withPublicKey(rsaKeyRecord.rsaPublicKey()).build();
+    // tao mot JwtDecoder -> su dung khoa cong Khai RSA. NumbusJwtDecoder la 1 class cu the
+    //cua JwtDecoder duoc cung cap boi thu vien Nimbus.
+}
+
+@Bean
+    JwtEncoder jwtEncoder(){ // su dung khoa cong khai va khoa rieng tu RSA tu rsaKeyRecord
+                             // jwtEncoder -> dung ma hoa va ky cac JWT
+    JWK jwk = new RSAKey.Builder(rsaKeyRecord.rsaPublicKey()).privateKey(rsaKeyRecord.rsaPrivateKey()).build();
+    // tao ra mot RSAKey su dung khoa cong khai va khoa rieng tu RSA cung cap.
+
+    JWKSource<SecurityContext> jwkSource = new ImmutableJWKSet<>(new JWKSet(jwk));
+    // tao mot JWKSet (JSON WEB KEY Set) tu RSAKey da tao. Sau do dong goi vao ImmutableJWKSet
+    // => no giup tao ra mot JwtEncoder su dung JWKSet da tao
+
+    return new NimbusJwtEncoder(jwkSource);
+    // tao mot JWTEncoder su dung JWKSet
+}
+
+
+
+
 
 /*
 * HttpSecurity => cho phep cấu hing bảo mật cho các yêu cầu HTTP cụ thể. Bạn co thể su dụng method requestMatcher()
