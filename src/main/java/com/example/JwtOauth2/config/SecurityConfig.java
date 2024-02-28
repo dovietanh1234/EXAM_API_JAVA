@@ -6,6 +6,8 @@ sau khi tao xong Bean
 * */
 
 
+import com.example.JwtOauth2.config.jwtConfig.JwtAccessTokenFilter;
+import com.example.JwtOauth2.config.jwtConfig.JwtTokenUtils;
 import com.example.JwtOauth2.config.userConfig.UserInfoManagerConfig;
 import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.JWKSet;
@@ -35,6 +37,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
 import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 @Configuration
@@ -49,6 +52,9 @@ public class SecurityConfig {
 
     // tao 2 bien cho cau hinh jwt "jwtEncoder"
     private final RSAKeyRecord rsaKeyRecord;
+
+    // cau hinh cho phep api khi xoa tai khoan tren DB token cua no ko the hoat dong dc
+    private final JwtTokenUtils jwtTokenUtils;
 
     // CONFIG MIDDLEWARE JWT
     @Order(1) // dat thu tu uu tien cho SecurityFilterChain
@@ -78,6 +84,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
               //  .userDetailsService(userInfoManagerConfig) //thay doi: duyet qua token chu ko can account nua
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults())) // duyet token thi moi co the chay API
+                .addFilterBefore(new JwtAccessTokenFilter(rsaKeyRecord, jwtTokenUtils), UsernamePasswordAuthenticationFilter.class)
                 .sessionManagement(session -> session.sessionCreationPolicy( SessionCreationPolicy.STATELESS ))
                 .exceptionHandling(ex -> {
                      log.error("[SecurityConfig:apiSecurityFilterChain] Exception due to :{}", ex);

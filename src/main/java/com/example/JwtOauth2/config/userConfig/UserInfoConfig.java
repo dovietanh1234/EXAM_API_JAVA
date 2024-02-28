@@ -20,7 +20,7 @@ public class UserInfoConfig implements UserDetails {
     * */
     private final UserInfoEntity userInfoEntity;
     @Override
-    public Collection<? extends GrantedAuthority> getAuthorities() {
+    public Collection<? extends GrantedAuthority> getAuthorities() { // SAVE VAO COLLECTION VI NO CO NHIEU METHODS THAO TAC VOI DATA HON.
         return Arrays
                 .stream( userInfoEntity.getRoles().split(",") )
                 .map(SimpleGrantedAuthority::new)
