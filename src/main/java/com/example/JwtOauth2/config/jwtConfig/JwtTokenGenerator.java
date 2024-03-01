@@ -35,9 +35,24 @@ public class JwtTokenGenerator {
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer("vietanh") // nguoi tao token
                 .issuedAt(Instant.now())
-                .expiresAt(Instant.now().plus(15, ChronoUnit.MINUTES))
+                .expiresAt(Instant.now().plus(1, ChronoUnit.MINUTES))
                 .subject(authentication.getName()) // ten subject cua token
                 .claim("scope", permission) //  cac quyen co the lam viec trong role
+                .build();
+
+        return jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
+
+    }
+
+    public String generateRefreshToken(Authentication authentication){
+        log.info("[JwtTokenGenerator:generateRefreshToken] Token Creation Started for:{}", authentication.getName());
+
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer("vietanh") // nguoi tao token
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plus(15, ChronoUnit.DAYS))
+                .subject(authentication.getName()) // ten subject cua token
+                .claim("scope", "REFRESH_TOKEN") //  cac quyen co the lam viec trong role
                 .build();
 
         return jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
